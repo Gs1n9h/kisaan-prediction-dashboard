@@ -70,7 +70,8 @@ export default function Dashboard() {
   const [loadingInventory, setLoadingInventory] = useState(false)
   const [syncingInventory, setSyncingInventory] = useState(false)
   const [selectedWarehouseId, setSelectedWarehouseId] = useState(null) // null = All stock
-  const [selectedCategories, setSelectedCategories] = useState([]) // [] = All categories; non-empty = filter to these
+  const DESELECT_ALL_SENTINEL = '__no_match__' // when only this is selected, no rows pass (deselect all)
+  const [selectedCategories, setSelectedCategories] = useState([]) // [] = All; [sentinel] = none; [...cats] = filter to these
   const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false)
   const [inventoryViewMode, setInventoryViewMode] = useState('by_warehouse') // 'by_warehouse' | 'by_product'
   const syncInventoryWebhookUrl = import.meta.env.VITE_N8N_SYNC_INVENTORY_WEBHOOK || ''
@@ -176,6 +177,7 @@ export default function Dashboard() {
   const filteredInventoryRows = inventoryRows.filter((r) => {
     if (selectedWarehouseId != null && r.warehouse_id !== selectedWarehouseId) return false
     if (selectedCategories.length > 0) {
+      if (selectedCategories.includes(DESELECT_ALL_SENTINEL)) return false
       const cat = r.category_name != null && r.category_name !== '' ? r.category_name : '__none__'
       if (!selectedCategories.includes(cat)) return false
     }
@@ -519,9 +521,11 @@ export default function Dashboard() {
                 <span className="inventory-category-trigger-text">
                   {selectedCategories.length === 0
                     ? 'All categories'
-                    : selectedCategories.length === 1
-                      ? (selectedCategories[0] === '__none__' ? '(No category)' : selectedCategories[0])
-                      : `${selectedCategories.length} categories`}
+                    : selectedCategories.length === 1 && selectedCategories[0] === DESELECT_ALL_SENTINEL
+                      ? 'No categories'
+                      : selectedCategories.length === 1
+                        ? (selectedCategories[0] === '__none__' ? '(No category)' : selectedCategories[0])
+                        : `${selectedCategories.filter((x) => x !== DESELECT_ALL_SENTINEL).length} categories`}
                 </span>
                 <span className="inventory-category-trigger-chevron" aria-hidden>{categoryDropdownOpen ? '▾' : '▸'}</span>
               </button>
@@ -544,6 +548,13 @@ export default function Dashboard() {
                       <button
                         type="button"
                         className="inventory-category-dropdown-action"
+                        onClick={() => setSelectedCategories([DESELECT_ALL_SENTINEL])}
+                      >
+                        Deselect all
+                      </button>
+                      <button
+                        type="button"
+                        className="inventory-category-dropdown-action"
                         onClick={() => { setSelectedCategories([]); setCategoryDropdownOpen(false); }}
                       >
                         Clear
@@ -551,7 +562,8 @@ export default function Dashboard() {
                     </div>
                     <div className="inventory-category-dropdown-list">
                       {inventoryCategories.map((c) => {
-                        const checked = selectedCategories.length === 0 || selectedCategories.includes(c)
+                        const isDeselectAll = selectedCategories.includes(DESELECT_ALL_SENTINEL)
+                        const checked = !isDeselectAll && (selectedCategories.length === 0 || selectedCategories.includes(c))
                         return (
                           <label key={c} className="inventory-category-checkbox">
                             <input
@@ -560,11 +572,13 @@ export default function Dashboard() {
                               onChange={() => {
                                 if (selectedCategories.length === 0) {
                                   setSelectedCategories(inventoryCategories.filter((x) => x !== c))
+                                } else if (isDeselectAll) {
+                                  setSelectedCategories([c])
                                 } else if (selectedCategories.includes(c)) {
-                                  const next = selectedCategories.filter((x) => x !== c)
+                                  const next = selectedCategories.filter((x) => x !== c && x !== DESELECT_ALL_SENTINEL)
                                   setSelectedCategories(next.length === 0 ? [] : next)
                                 } else {
-                                  setSelectedCategories([...selectedCategories, c])
+                                  setSelectedCategories([...selectedCategories.filter((x) => x !== DESELECT_ALL_SENTINEL), c])
                                 }
                               }}
                             />
