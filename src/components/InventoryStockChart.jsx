@@ -67,8 +67,28 @@ function WarehousePie({ row }) {
   )
 }
 
-export default function InventoryStockChart({ data, loading }) {
+export default function InventoryStockChart({ data, loading, aggregated }) {
   if (loading || !data?.length) return null
+
+  if (aggregated) {
+    const totalQuantity = data.reduce((s, r) => s + (Number(r.total_quantity) || 0), 0)
+    const totalAvailable = data.reduce((s, r) => s + (Number(r.total_available) || 0), 0)
+    const summedRow = {
+      warehouse_id: 'all',
+      warehouse_name: 'All warehouses',
+      total_quantity: totalQuantity,
+      total_available: totalAvailable,
+      product_count: data.reduce((s, r) => s + (Number(r.product_count) || 0), 0),
+    }
+    return (
+      <div className="inventory-chart-wrap">
+        <h3 className="inventory-chart-title">Stock (total vs available)</h3>
+        <div className="inventory-pies-grid inventory-pies-grid--single">
+          <WarehousePie row={summedRow} />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="inventory-chart-wrap">

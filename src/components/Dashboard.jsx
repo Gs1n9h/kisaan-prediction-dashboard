@@ -553,7 +553,11 @@ export default function Dashboard() {
           )}
         </div>
         {inventoryByWarehouse.length > 0 && (
-          <InventoryStockChart data={inventoryByWarehouse} loading={loadingInventory} />
+          <InventoryStockChart
+            data={inventoryByWarehouse}
+            loading={loadingInventory}
+            aggregated={inventoryViewMode === 'by_product'}
+          />
         )}
         <InventoryStockTable
           rows={inventoryTableRows}

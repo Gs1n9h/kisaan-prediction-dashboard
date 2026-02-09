@@ -736,6 +736,10 @@ body {
   width: 100%;
 }
 
+.inventory-pies-grid--single .inventory-warehouse-pie {
+  max-width: 340px;
+}
+
 .inventory-warehouse-pie {
   flex: 1 1 0;
   min-width: 160px;
