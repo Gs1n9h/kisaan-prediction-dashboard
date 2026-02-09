@@ -70,7 +70,8 @@ export default function Dashboard() {
   const [loadingInventory, setLoadingInventory] = useState(false)
   const [syncingInventory, setSyncingInventory] = useState(false)
   const [selectedWarehouseId, setSelectedWarehouseId] = useState(null) // null = All stock
-  const [selectedCategory, setSelectedCategory] = useState(null) // null = All categories
+  const [selectedCategories, setSelectedCategories] = useState([]) // [] = All categories; non-empty = filter to these
+  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false)
   const [inventoryViewMode, setInventoryViewMode] = useState('by_warehouse') // 'by_warehouse' | 'by_product'
   const syncInventoryWebhookUrl = import.meta.env.VITE_N8N_SYNC_INVENTORY_WEBHOOK || ''
 
@@ -174,9 +175,9 @@ export default function Dashboard() {
   })()
   const filteredInventoryRows = inventoryRows.filter((r) => {
     if (selectedWarehouseId != null && r.warehouse_id !== selectedWarehouseId) return false
-    if (selectedCategory != null) {
+    if (selectedCategories.length > 0) {
       const cat = r.category_name != null && r.category_name !== '' ? r.category_name : '__none__'
-      if (cat !== selectedCategory) return false
+      if (!selectedCategories.includes(cat)) return false
     }
     return true
   })
@@ -504,22 +505,57 @@ export default function Dashboard() {
               ))}
             </select>
           </label>
-          <label className="filter-label inventory-category-filter">
+          <div className="filter-label inventory-category-filter">
             <span className="filter-name">Category</span>
-            <select
-              value={selectedCategory ?? ''}
-              onChange={(e) => setSelectedCategory(e.target.value === '' ? null : e.target.value)}
-              aria-label="Filter by category"
-              className="inventory-warehouse-select"
-            >
-              <option value="">All categories</option>
-              {inventoryCategories.map((c) => (
-                <option key={c} value={c}>
-                  {c === '__none__' ? '(No category)' : c}
-                </option>
-              ))}
-            </select>
-          </label>
+            <div className="inventory-category-dropdown-wrap">
+              <button
+                type="button"
+                className="inventory-warehouse-select inventory-category-trigger"
+                onClick={() => setCategoryDropdownOpen((o) => !o)}
+                aria-label="Filter by category"
+                aria-expanded={categoryDropdownOpen}
+              >
+                {selectedCategories.length === 0
+                  ? 'All categories'
+                  : selectedCategories.length === 1
+                    ? (selectedCategories[0] === '__none__' ? '(No category)' : selectedCategories[0])
+                    : `${selectedCategories.length} categories`}
+              </button>
+              {categoryDropdownOpen && (
+                <>
+                  <div
+                    className="inventory-category-dropdown-backdrop"
+                    role="presentation"
+                    onClick={() => setCategoryDropdownOpen(false)}
+                  />
+                  <div className="inventory-category-dropdown-panel">
+                    {inventoryCategories.map((c) => {
+                      const checked = selectedCategories.length === 0 || selectedCategories.includes(c)
+                      return (
+                        <label key={c} className="inventory-category-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              if (selectedCategories.length === 0) {
+                                setSelectedCategories(inventoryCategories.filter((x) => x !== c))
+                              } else if (selectedCategories.includes(c)) {
+                                const next = selectedCategories.filter((x) => x !== c)
+                                setSelectedCategories(next.length === 0 ? [] : next)
+                              } else {
+                                setSelectedCategories([...selectedCategories, c])
+                              }
+                            }}
+                          />
+                          <span>{c === '__none__' ? '(No category)' : c}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
           <label className="filter-label inventory-view-mode">
             <span className="filter-name">View</span>
             <select
