@@ -510,16 +510,20 @@ export default function Dashboard() {
             <div className="inventory-category-dropdown-wrap">
               <button
                 type="button"
-                className="inventory-warehouse-select inventory-category-trigger"
+                className="inventory-category-trigger"
                 onClick={() => setCategoryDropdownOpen((o) => !o)}
                 aria-label="Filter by category"
                 aria-expanded={categoryDropdownOpen}
+                aria-haspopup="listbox"
               >
-                {selectedCategories.length === 0
-                  ? 'All categories'
-                  : selectedCategories.length === 1
-                    ? (selectedCategories[0] === '__none__' ? '(No category)' : selectedCategories[0])
-                    : `${selectedCategories.length} categories`}
+                <span className="inventory-category-trigger-text">
+                  {selectedCategories.length === 0
+                    ? 'All categories'
+                    : selectedCategories.length === 1
+                      ? (selectedCategories[0] === '__none__' ? '(No category)' : selectedCategories[0])
+                      : `${selectedCategories.length} categories`}
+                </span>
+                <span className="inventory-category-trigger-chevron" aria-hidden>{categoryDropdownOpen ? '▾' : '▸'}</span>
               </button>
               {categoryDropdownOpen && (
                 <>
@@ -528,29 +532,47 @@ export default function Dashboard() {
                     role="presentation"
                     onClick={() => setCategoryDropdownOpen(false)}
                   />
-                  <div className="inventory-category-dropdown-panel">
-                    {inventoryCategories.map((c) => {
-                      const checked = selectedCategories.length === 0 || selectedCategories.includes(c)
-                      return (
-                        <label key={c} className="inventory-category-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => {
-                              if (selectedCategories.length === 0) {
-                                setSelectedCategories(inventoryCategories.filter((x) => x !== c))
-                              } else if (selectedCategories.includes(c)) {
-                                const next = selectedCategories.filter((x) => x !== c)
-                                setSelectedCategories(next.length === 0 ? [] : next)
-                              } else {
-                                setSelectedCategories([...selectedCategories, c])
-                              }
-                            }}
-                          />
-                          <span>{c === '__none__' ? '(No category)' : c}</span>
-                        </label>
-                      )
-                    })}
+                  <div className="inventory-category-dropdown-panel" role="listbox">
+                    <div className="inventory-category-dropdown-header">
+                      <button
+                        type="button"
+                        className="inventory-category-dropdown-action"
+                        onClick={() => setSelectedCategories([])}
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        className="inventory-category-dropdown-action"
+                        onClick={() => { setSelectedCategories([]); setCategoryDropdownOpen(false); }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div className="inventory-category-dropdown-list">
+                      {inventoryCategories.map((c) => {
+                        const checked = selectedCategories.length === 0 || selectedCategories.includes(c)
+                        return (
+                          <label key={c} className="inventory-category-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                if (selectedCategories.length === 0) {
+                                  setSelectedCategories(inventoryCategories.filter((x) => x !== c))
+                                } else if (selectedCategories.includes(c)) {
+                                  const next = selectedCategories.filter((x) => x !== c)
+                                  setSelectedCategories(next.length === 0 ? [] : next)
+                                } else {
+                                  setSelectedCategories([...selectedCategories, c])
+                                }
+                              }}
+                            />
+                            <span>{c === '__none__' ? '(No category)' : c}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
                   </div>
                 </>
               )}
