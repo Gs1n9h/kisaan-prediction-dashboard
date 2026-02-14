@@ -36,6 +36,12 @@ function daysBetween(fromStr, toStr) {
   return Math.max(0, diff) + 1
 }
 
+/** Parse "Raw Material / Card Boxes / Dividers" -> ["Raw Material", "Card Boxes", "Dividers"] */
+function parseCategoryPath(categoryName) {
+  if (!categoryName || typeof categoryName !== 'string') return []
+  return categoryName.split(/\s*\/\s*/).filter(Boolean)
+}
+
 export default function Dashboard() {
   const [products, setProducts] = useState([])
   const [productId, setProductId] = useState('')
@@ -70,9 +76,8 @@ export default function Dashboard() {
   const [loadingInventory, setLoadingInventory] = useState(false)
   const [syncingInventory, setSyncingInventory] = useState(false)
   const [selectedWarehouseId, setSelectedWarehouseId] = useState(null) // null = All stock
-  const DESELECT_ALL_SENTINEL = '__no_match__' // when only this is selected, no rows pass (deselect all)
-  const [selectedCategories, setSelectedCategories] = useState([]) // [] = All; [sentinel] = none; [...cats] = filter to these
-  const [categoryDropdownOpen, setCategoryDropdownOpen] = useState(false)
+  const [selectedCategoryRoot, setSelectedCategoryRoot] = useState('') // '' = All; e.g. 'Raw Material'
+  const [selectedCategorySub, setSelectedCategorySub] = useState('') // '' = All under root; e.g. 'Card Boxes'
   const [inventoryViewMode, setInventoryViewMode] = useState('by_warehouse') // 'by_warehouse' | 'by_product'
   const syncInventoryWebhookUrl = import.meta.env.VITE_N8N_SYNC_INVENTORY_WEBHOOK || ''
 
@@ -168,18 +173,29 @@ export default function Dashboard() {
   }
   useEffect(() => { fetchInventory() }, [])
 
-  const inventoryCategories = (() => {
+  const categoryRoots = (() => {
     const set = new Set()
-    inventoryRows.forEach((r) => set.add(r.category_name != null && r.category_name !== '' ? r.category_name : '__none__'))
-    const list = Array.from(set).sort((a, b) => (a === '__none__' ? 1 : b === '__none__' ? -1 : a.localeCompare(b)))
-    return list
+    inventoryRows.forEach((r) => {
+      const path = parseCategoryPath(r.category_name)
+      if (path.length > 0) set.add(path[0])
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  })()
+  const categorySubs = (() => {
+    if (!selectedCategoryRoot) return []
+    const set = new Set()
+    inventoryRows.forEach((r) => {
+      const path = parseCategoryPath(r.category_name)
+      if (path.length >= 2 && path[0] === selectedCategoryRoot) set.add(path[1])
+    })
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
   })()
   const filteredInventoryRows = inventoryRows.filter((r) => {
     if (selectedWarehouseId != null && r.warehouse_id !== selectedWarehouseId) return false
-    if (selectedCategories.length > 0) {
-      if (selectedCategories.includes(DESELECT_ALL_SENTINEL)) return false
-      const cat = r.category_name != null && r.category_name !== '' ? r.category_name : '__none__'
-      if (!selectedCategories.includes(cat)) return false
+    const path = parseCategoryPath(r.category_name)
+    if (selectedCategoryRoot) {
+      if (path.length === 0 || path[0] !== selectedCategoryRoot) return false
+      if (selectedCategorySub && (path.length < 2 || path[1] !== selectedCategorySub)) return false
     }
     return true
   })
@@ -507,91 +523,36 @@ export default function Dashboard() {
               ))}
             </select>
           </label>
-          <div className="filter-label inventory-category-filter">
+          <label className="filter-label inventory-category-filter">
             <span className="filter-name">Category</span>
-            <div className="inventory-category-dropdown-wrap">
-              <button
-                type="button"
-                className="inventory-category-trigger"
-                onClick={() => setCategoryDropdownOpen((o) => !o)}
-                aria-label="Filter by category"
-                aria-expanded={categoryDropdownOpen}
-                aria-haspopup="listbox"
+            <select
+              value={selectedCategoryRoot}
+              onChange={(e) => { setSelectedCategoryRoot(e.target.value); setSelectedCategorySub(''); }}
+              aria-label="Filter by category (root)"
+              className="inventory-warehouse-select"
+            >
+              <option value="">All categories</option>
+              {categoryRoots.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </label>
+          {selectedCategoryRoot && categorySubs.length > 0 && (
+            <label className="filter-label inventory-category-sub-filter">
+              <span className="filter-name">Subcategory</span>
+              <select
+                value={selectedCategorySub}
+                onChange={(e) => setSelectedCategorySub(e.target.value)}
+                aria-label="Filter by subcategory"
+                className="inventory-warehouse-select"
               >
-                <span className="inventory-category-trigger-text">
-                  {selectedCategories.length === 0
-                    ? 'All categories'
-                    : selectedCategories.length === 1 && selectedCategories[0] === DESELECT_ALL_SENTINEL
-                      ? 'No categories'
-                      : selectedCategories.length === 1
-                        ? (selectedCategories[0] === '__none__' ? '(No category)' : selectedCategories[0])
-                        : `${selectedCategories.filter((x) => x !== DESELECT_ALL_SENTINEL).length} categories`}
-                </span>
-                <span className="inventory-category-trigger-chevron" aria-hidden>{categoryDropdownOpen ? '▾' : '▸'}</span>
-              </button>
-              {categoryDropdownOpen && (
-                <>
-                  <div
-                    className="inventory-category-dropdown-backdrop"
-                    role="presentation"
-                    onClick={() => setCategoryDropdownOpen(false)}
-                  />
-                  <div className="inventory-category-dropdown-panel" role="listbox">
-                    <div className="inventory-category-dropdown-header">
-                      <button
-                        type="button"
-                        className="inventory-category-dropdown-action"
-                        onClick={() => setSelectedCategories([])}
-                      >
-                        Select all
-                      </button>
-                      <button
-                        type="button"
-                        className="inventory-category-dropdown-action"
-                        onClick={() => setSelectedCategories([DESELECT_ALL_SENTINEL])}
-                      >
-                        Deselect all
-                      </button>
-                      <button
-                        type="button"
-                        className="inventory-category-dropdown-action"
-                        onClick={() => { setSelectedCategories([]); setCategoryDropdownOpen(false); }}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                    <div className="inventory-category-dropdown-list">
-                      {inventoryCategories.map((c) => {
-                        const isDeselectAll = selectedCategories.includes(DESELECT_ALL_SENTINEL)
-                        const checked = !isDeselectAll && (selectedCategories.length === 0 || selectedCategories.includes(c))
-                        return (
-                          <label key={c} className="inventory-category-checkbox">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                if (selectedCategories.length === 0) {
-                                  setSelectedCategories(inventoryCategories.filter((x) => x !== c))
-                                } else if (isDeselectAll) {
-                                  setSelectedCategories([c])
-                                } else if (selectedCategories.includes(c)) {
-                                  const next = selectedCategories.filter((x) => x !== c && x !== DESELECT_ALL_SENTINEL)
-                                  setSelectedCategories(next.length === 0 ? [] : next)
-                                } else {
-                                  setSelectedCategories([...selectedCategories.filter((x) => x !== DESELECT_ALL_SENTINEL), c])
-                                }
-                              }}
-                            />
-                            <span>{c === '__none__' ? '(No category)' : c}</span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+                <option value="">All in {selectedCategoryRoot}</option>
+                {categorySubs.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="filter-label inventory-view-mode">
             <span className="filter-name">View</span>
             <select
