@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 function dateStringAddDays(dateStr, days) {
   const d = new Date(dateStr + 'T12:00:00')
@@ -17,19 +17,37 @@ function getTodayStr() {
   return `${y}-${m}-${day}`
 }
 
+/** Format YYYY-MM-DD to dd/mm/yy (day name) for display */
 function formatDateLabel(dateStr) {
   if (!dateStr || dateStr.length < 10) return dateStr
   const d = new Date(dateStr + 'T12:00:00')
   if (Number.isNaN(d.getTime())) return dateStr
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  const day = dayNames[d.getDay()]
-  return `${dateStr} (${day})`
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yy = String(d.getFullYear()).slice(-2)
+  const dayName = dayNames[d.getDay()]
+  return `${dd}/${mm}/${yy} (${dayName})`
 }
 
 export default function AllProductsTable({ products, historyAll, predictionsAll, dateStart, numDays, onExportCSV }) {
   const todayStr = getTodayStr()
+  const [sortDirection, setSortDirection] = useState('asc') // 'asc' | 'desc'
+  const [dataAlign, setDataAlign] = useState('left') // 'left' | 'center' | 'right'
+  const [colSize, setColSize] = useState('normal') // 'compact' | 'normal' | 'wide'
+
+  const sortedProducts = useMemo(() => {
+    const list = [...(products || [])]
+    const name = (p) => (p.product_short_name || p.product_id || '').toLowerCase()
+    list.sort((a, b) => {
+      const cmp = name(a).localeCompare(name(b))
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+    return list
+  }, [products, sortDirection])
 
   const { dates, grid, csvContent } = useMemo(() => {
+    const prods = sortedProducts
     const dates = []
     for (let i = 0; i < numDays; i++) {
       dates.push(dateStringAddDays(dateStart, i))
@@ -48,7 +66,7 @@ export default function AllProductsTable({ products, historyAll, predictionsAll,
     }
 
     const grid = {}
-    for (const p of products || []) {
+    for (const p of prods) {
       const pid = p.product_id
       grid[pid] = { product_id: pid, product_short_name: p.product_short_name || pid, cells: {} }
       for (const dt of dates) {
@@ -81,20 +99,27 @@ export default function AllProductsTable({ products, historyAll, predictionsAll,
     }
 
     let csvContent = null
-    if (products?.length && dates.length) {
+    if (prods?.length && dates.length) {
+      const toCsvCell = (v) => {
+        const s = v === '—' || v === '--' || v == null || v === '' ? 'no data' : String(v)
+        return `"${s.replace(/"/g, '""')}"`
+      }
       const dateHeaders = dates.map((dt) => formatDateLabel(dt))
       const header = ['Product', 'product_id', ...dateHeaders].join(',')
-      const rows = (products || []).map((p) => {
+      const rows = prods.map((p) => {
         const row = grid[p.product_id]
         if (!row) return null
-        const cells = dates.map((dt) => row.cells[dt]?.display ?? '—')
-        return [row.product_short_name || p.product_id, p.product_id, ...cells].map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')
+        const cells = dates.map((dt) => {
+          const v = row.cells[dt]?.display
+          return (v === '—' || v === '--' || v == null) ? 'no data' : String(v)
+        })
+        return [row.product_short_name || p.product_id, p.product_id, ...cells].map(toCsvCell).join(',')
       }).filter(Boolean)
       csvContent = [header, ...rows].join('\n')
     }
 
     return { dates, grid, csvContent }
-  }, [products, historyAll, predictionsAll, dateStart, numDays])
+  }, [sortedProducts, historyAll, predictionsAll, dateStart, numDays])
 
   function handleExportCSV() {
     if (!csvContent) return
@@ -123,6 +148,44 @@ export default function AllProductsTable({ products, historyAll, predictionsAll,
         <strong>x / y</strong> means <strong>Actual / Forecast</strong> for that date (when both exist). Hover a cell for details and prediction reasoning.
       </p>
       <div className="all-products-table-actions">
+        <label className="filter-label table-sort-label">
+          <span className="filter-name">Sort</span>
+          <select
+            value={sortDirection}
+            onChange={(e) => setSortDirection(e.target.value)}
+            aria-label="Sort products"
+            className="table-sort-select"
+          >
+            <option value="asc">A → Z</option>
+            <option value="desc">Z → A</option>
+          </select>
+        </label>
+        <label className="filter-label table-align-label">
+          <span className="filter-name">Align data</span>
+          <select
+            value={dataAlign}
+            onChange={(e) => setDataAlign(e.target.value)}
+            aria-label="Align table data"
+            className="table-align-select"
+          >
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+        <label className="filter-label table-colsize-label">
+          <span className="filter-name">Column size</span>
+          <select
+            value={colSize}
+            onChange={(e) => setColSize(e.target.value)}
+            aria-label="Column size"
+            className="table-colsize-select"
+          >
+            <option value="compact">Compact</option>
+            <option value="normal">Normal</option>
+            <option value="wide">Wide</option>
+          </select>
+        </label>
         <button
           type="button"
           className="btn-export-csv"
@@ -133,14 +196,14 @@ export default function AllProductsTable({ products, historyAll, predictionsAll,
         </button>
       </div>
       <div className="all-products-table-scroll">
-        <table className="all-products-table">
+        <table className={`all-products-table align-data-${dataAlign} col-size-${colSize}`}>
           <thead>
             <tr>
               <th className="all-products-col-product">Product</th>
               {dates.map((dt) => (
                 <th
                   key={dt}
-                  className={dt === todayStr ? 'all-products-col-today' : ''}
+                  className={`all-products-data-col ${dt === todayStr ? 'all-products-col-today' : ''}`}
                   title={formatDateLabel(dt)}
                 >
                   {formatDateLabel(dt)}
@@ -149,7 +212,7 @@ export default function AllProductsTable({ products, historyAll, predictionsAll,
             </tr>
           </thead>
           <tbody>
-            {products.map((p) => {
+            {sortedProducts.map((p) => {
               const row = grid[p.product_id]
               if (!row) return null
               return (
@@ -157,15 +220,28 @@ export default function AllProductsTable({ products, historyAll, predictionsAll,
                   <td className="all-products-col-product" title={p.product_short_name || p.product_id}>
                     {p.product_short_name || p.product_id}
                   </td>
-                  {dates.map((dt) => (
-                    <td
-                      key={dt}
-                      className={dt === todayStr ? 'all-products-col-today' : ''}
-                      title={row.cells[dt]?.tooltip || undefined}
-                    >
-                      {row.cells[dt]?.display ?? '—'}
-                    </td>
-                  ))}
+                  {dates.map((dt) => {
+                    const cell = row.cells[dt]
+                    const { display, actual, forecast } = cell || {}
+                    const hasBoth = actual != null && forecast != null
+                    return (
+                      <td
+                        key={dt}
+                        className={`all-products-data-col ${dt === todayStr ? 'all-products-col-today' : ''}`}
+                        title={cell?.tooltip || undefined}
+                      >
+                        {hasBoth ? (
+                          <span className="demand-cell-both">
+                            <span className="demand-cell-actual">{actual}</span>
+                            <span className="demand-cell-sep"> / </span>
+                            <span className="demand-cell-forecast">{forecast}</span>
+                          </span>
+                        ) : (
+                          display ?? '—'
+                        )}
+                      </td>
+                    )
+                  })}
                 </tr>
               )
             })}

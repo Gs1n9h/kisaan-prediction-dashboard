@@ -566,6 +566,82 @@ body {
 
 .all-products-search-wrap {
   margin: 1rem 0 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.all-products-picker-wrap {
+  position: relative;
+}
+
+.btn-product-picker {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-product-picker:hover,
+.btn-product-picker.open {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.product-picker-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 0.25rem;
+  min-width: 220px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 0.5rem;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.product-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.product-picker-item input {
+  margin: 0;
+}
+
+.product-picker-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #30363d;
+}
+
+.product-picker-actions button {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+  background: var(--bg);
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.product-picker-actions button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .all-products-search-input {
@@ -685,6 +761,64 @@ body {
 
 .all-products-table thead .all-products-col-today {
   background: rgba(245, 158, 11, 0.2);
+}
+
+.demand-cell-actual {
+  color: #3b82f6;
+  font-weight: 500;
+}
+
+.demand-cell-forecast {
+  color: #eab308;
+  font-weight: 500;
+}
+
+.demand-cell-sep {
+  color: var(--muted);
+  margin: 0 0.15em;
+}
+
+/* Table data column alignment (product column stays left) */
+.all-products-table.align-data-left .all-products-data-col { text-align: left; }
+.all-products-table.align-data-center .all-products-data-col { text-align: center; }
+.all-products-table.align-data-right .all-products-data-col { text-align: right; }
+
+.all-products-table.col-size-compact th, .all-products-table.col-size-compact td { padding: 0.25rem 0.4rem; font-size: 0.8rem; }
+.all-products-table.col-size-wide th, .all-products-table.col-size-wide td { padding: 0.6rem 1rem; font-size: 0.9rem; }
+
+.all-products-count,
+.inventory-count {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+}
+
+.table-sort-label,
+.table-align-label {
+  margin-right: 1rem;
+}
+
+.table-sort-select,
+.table-align-select,
+.table-colsize-select {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.9rem;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  margin-left: 0.25rem;
+}
+
+/* Date input calendar icon - white for visibility */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.8;
+}
+
+input[type="date"]::-webkit-date-and-time-value {
+  color: var(--text);
 }
 
 /* Inventory (Odoo stock) section — does not affect demand/chart */
@@ -1016,6 +1150,20 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.inventory-table.align-data-left .inv-col-data { text-align: left; }
+.inventory-table.align-data-center .inv-col-data { text-align: center; }
+.inventory-table.align-data-right .inv-col-data { text-align: right; }
+
+.inventory-table.col-size-compact th, .inventory-table.col-size-compact td { padding: 0.25rem 0.4rem; font-size: 0.8rem; }
+.inventory-table.col-size-wide th, .inventory-table.col-size-wide td { padding: 0.6rem 1rem; font-size: 0.9rem; }
+
+.inventory-table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .app-loading {

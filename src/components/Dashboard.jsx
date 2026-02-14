@@ -36,6 +36,17 @@ function daysBetween(fromStr, toStr) {
   return Math.max(0, diff) + 1
 }
 
+/** Format YYYY-MM-DD to dd/mm/yy for display */
+function formatDateDDMMYY(dateStr) {
+  if (!dateStr || dateStr.length < 10) return dateStr || ''
+  const d = new Date(dateStr + 'T12:00:00')
+  if (Number.isNaN(d.getTime())) return dateStr
+  const day = String(d.getDate()).padStart(2, '0')
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const year = String(d.getFullYear()).slice(-2)
+  return `${day}/${month}/${year}`
+}
+
 /** Parse "Raw Material / Card Boxes / Dividers" -> ["Raw Material", "Card Boxes", "Dividers"] */
 function parseCategoryPath(categoryName) {
   if (!categoryName || typeof categoryName !== 'string') return []
@@ -67,6 +78,17 @@ export default function Dashboard() {
   // Date range filters: demand period (backwards), forecast ahead (forward)
   const [demandDaysBack, setDemandDaysBack] = useState(30)      // 30 | 60 | 90
   const [forecastDaysForward, setForecastDaysForward] = useState(30) // 7 | 30
+  const [demandPeriodMode, setDemandPeriodMode] = useState('preset') // 'preset' | 'manual'
+  const [demandDateFrom, setDemandDateFrom] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 30)
+    return d.toISOString().slice(0, 10)
+  })
+  const [demandDateTo, setDemandDateTo] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 30)
+    return d.toISOString().slice(0, 10)
+  })
 
   // Forecast run selection state
   const [availableRuns, setAvailableRuns] = useState([])
@@ -92,9 +114,11 @@ export default function Dashboard() {
   const [selectedWarehouseId, setSelectedWarehouseId] = useState(null) // null = All stock
   const [selectedCategoryRoot, setSelectedCategoryRoot] = useState('') // '' = All; e.g. 'Raw Material'
   const [selectedCategorySub, setSelectedCategorySub] = useState('') // '' = All under root; e.g. 'Card Boxes'
-  const [inventoryViewMode, setInventoryViewMode] = useState('by_warehouse') // 'by_warehouse' | 'by_product'
+  const [inventoryViewMode, setInventoryViewMode] = useState('by_warehouse') // 'by_warehouse' | 'by_product' | 'by_product_both_warehouses'
   const [inventorySearchQuery, setInventorySearchQuery] = useState('')
   const [allProductsSearchQuery, setAllProductsSearchQuery] = useState('')
+  const [selectedProductIds, setSelectedProductIds] = useState(new Set()) // empty = show all; non-empty = filter to these
+  const [showProductPicker, setShowProductPicker] = useState(false)
   const syncInventoryWebhookUrl = import.meta.env.VITE_N8N_SYNC_INVENTORY_WEBHOOK || ''
 
   useEffect(() => {
@@ -106,6 +130,10 @@ export default function Dashboard() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
+
+  const chartDateOpts = demandPeriodMode === 'manual'
+    ? { fromStr: demandDateFrom, toStr: demandDateTo }
+    : { daysBack: demandDaysBack, daysForward: forecastDaysForward }
 
   useEffect(() => {
     if (!productId) {
@@ -121,8 +149,8 @@ export default function Dashboard() {
     setSelectedRuns([]) // reset so we don't keep previous product's run selection
     setMultiRunPredictions({})
     Promise.all([
-      getHistory(productId, demandDaysBack, forecastDaysForward),
-      getPredictions(productId, { daysBack: demandDaysBack, daysForward: forecastDaysForward }),
+      getHistory(productId, demandDaysBack, forecastDaysForward, chartDateOpts),
+      getPredictions(productId, chartDateOpts),
       getPredictionRunDates(productId)
     ])
       .then(([h, p, runs]) => {
@@ -133,7 +161,7 @@ export default function Dashboard() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [productId, demandDaysBack, forecastDaysForward])
+  }, [productId, demandDaysBack, forecastDaysForward, demandPeriodMode, demandDateFrom, demandDateTo])
   
   // Fetch multi-run predictions when selection or date range changes
   useEffect(() => {
@@ -141,10 +169,10 @@ export default function Dashboard() {
       setMultiRunPredictions({})
       return
     }
-    getPredictionsForRuns(productId, selectedRuns, { daysBack: demandDaysBack, daysForward: forecastDaysForward })
+    getPredictionsForRuns(productId, selectedRuns, chartDateOpts)
       .then(setMultiRunPredictions)
       .catch((e) => console.error('[Dashboard] Error fetching multi-run predictions:', e))
-  }, [productId, selectedRuns, demandDaysBack, forecastDaysForward])
+  }, [productId, selectedRuns, demandDaysBack, forecastDaysForward, demandPeriodMode, demandDateFrom, demandDateTo])
 
   // Fetch all-products data for table view
   useEffect(() => {
@@ -262,7 +290,43 @@ export default function Dashboard() {
     }
     return Array.from(byProduct.values()).sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''))
   })()
-  const inventoryTableRows = inventoryViewMode === 'by_product' ? aggregatedByProduct : filteredInventoryRows
+  // By product (both warehouses): one row per product, quantity as wh1/wh2/wh3
+  const warehouseOrder = (() => {
+    const seen = new Map()
+    for (const r of filteredInventoryRows) {
+      if (!seen.has(r.warehouse_id)) {
+        seen.set(r.warehouse_id, r.warehouse_name || `Warehouse ${r.warehouse_id}`)
+      }
+    }
+    return Array.from(seen.entries()).sort((a, b) => (a[1] || '').localeCompare(b[1] || ''))
+  })()
+  const aggregatedByProductBothWarehouses = (() => {
+    const byProduct = new Map()
+    for (const r of filteredInventoryRows) {
+      const id = r.odoo_product_id
+      if (!byProduct.has(id)) {
+        byProduct.set(id, {
+          odoo_product_id: id,
+          product_name: r.product_name,
+          default_code: r.default_code,
+          category_name: r.category_name,
+          quantitiesByWh: {},
+          snapshot_at: r.snapshot_at,
+        })
+      }
+      const row = byProduct.get(id)
+      row.quantitiesByWh[r.warehouse_id] = Number(r.quantity) ?? 0
+    }
+    return Array.from(byProduct.values()).map((row) => {
+      const qtyStr = warehouseOrder.map(([whId]) => row.quantitiesByWh[whId] ?? 0).join('/')
+      return { ...row, quantity_by_warehouse: qtyStr, warehouse_order: warehouseOrder }
+    }).sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''))
+  })()
+  const inventoryTableRows = inventoryViewMode === 'by_product'
+    ? aggregatedByProduct
+    : inventoryViewMode === 'by_product_both_warehouses'
+      ? aggregatedByProductBothWarehouses
+      : filteredInventoryRows
 
   async function handleSyncInventory() {
     setSyncingInventory(true)
@@ -289,8 +353,8 @@ export default function Dashboard() {
       await runRefreshDailyDemandSummary()
       if (productId) {
         const [h, p, runs] = await Promise.all([
-          getHistory(productId, demandDaysBack, forecastDaysForward),
-          getPredictions(productId, { daysBack: demandDaysBack, daysForward: forecastDaysForward }),
+          getHistory(productId, demandDaysBack, forecastDaysForward, chartDateOpts),
+          getPredictions(productId, chartDateOpts),
           getPredictionRunDates(productId)
         ])
         setHistory(h)
@@ -396,15 +460,49 @@ export default function Dashboard() {
               <label className="filter-label">
                 <span className="filter-name">Demand period</span>
                 <select
-                  value={demandDaysBack}
-                  onChange={(e) => setDemandDaysBack(Number(e.target.value))}
-                  aria-label="Days of past demand to show"
+                  value={demandPeriodMode}
+                  onChange={(e) => setDemandPeriodMode(e.target.value)}
+                  aria-label="Demand period mode"
                 >
-                  <option value={30}>30 days</option>
-                  <option value={60}>60 days</option>
-                  <option value={90}>90 days</option>
+                  <option value="preset">Preset (30/60/90 days)</option>
+                  <option value="manual">Manual date range</option>
                 </select>
               </label>
+              {demandPeriodMode === 'preset' ? (
+                <label className="filter-label">
+                  <span className="filter-name">Days</span>
+                  <select
+                    value={demandDaysBack}
+                    onChange={(e) => setDemandDaysBack(Number(e.target.value))}
+                    aria-label="Days of past demand"
+                  >
+                    <option value={30}>30 days</option>
+                    <option value={60}>60 days</option>
+                    <option value={90}>90 days</option>
+                  </select>
+                </label>
+              ) : (
+                <>
+                  <label className="filter-label">
+                    <span className="filter-name">From</span>
+                    <input
+                      type="date"
+                      value={demandDateFrom}
+                      onChange={(e) => setDemandDateFrom(e.target.value)}
+                      className="all-products-date-input"
+                    />
+                  </label>
+                  <label className="filter-label">
+                    <span className="filter-name">To</span>
+                    <input
+                      type="date"
+                      value={demandDateTo}
+                      onChange={(e) => setDemandDateTo(e.target.value)}
+                      className="all-products-date-input"
+                    />
+                  </label>
+                </>
+              )}
               <label className="filter-label">
                 <span className="filter-name">Forecast ahead</span>
                 <select
@@ -515,20 +613,89 @@ export default function Dashboard() {
             aria-label="Search products in table"
             className="all-products-search-input"
           />
+          <div className="all-products-picker-wrap">
+            <button
+              type="button"
+              className={`btn-product-picker ${showProductPicker ? 'open' : ''}`}
+              onClick={() => setShowProductPicker((v) => !v)}
+              aria-expanded={showProductPicker}
+              aria-haspopup="listbox"
+            >
+              Select products {selectedProductIds.size > 0 ? `(${selectedProductIds.size})` : ''}
+            </button>
+            {showProductPicker && (
+              <div className="product-picker-dropdown" role="listbox">
+                {products
+                  .filter((p) =>
+                    fuzzyMatch(p.product_short_name, allProductsSearchQuery) ||
+                    fuzzyMatch(p.product_id, allProductsSearchQuery)
+                  )
+                  .map((p) => {
+                    const id = p.product_id
+                    const checked = selectedProductIds.size === 0 || selectedProductIds.has(id)
+                    return (
+                      <label key={id} className="product-picker-item">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            const searchFiltered = products.filter((x) =>
+                              fuzzyMatch(x.product_short_name, allProductsSearchQuery) ||
+                              fuzzyMatch(x.product_id, allProductsSearchQuery)
+                            )
+                            const allIds = new Set(searchFiltered.map((x) => x.product_id))
+                            setSelectedProductIds((prev) => {
+                              const next = new Set(prev)
+                              const currentlyShowing = prev.size === 0 ? allIds : prev
+                              const willShow = currentlyShowing.has(id)
+                                ? (() => { const s = new Set(currentlyShowing); s.delete(id); return s })()
+                                : (() => { const s = new Set(prev.size === 0 ? allIds : prev); s.add(id); return s })()
+                              return willShow.size === allIds.size ? new Set() : willShow
+                            })
+                          }}
+                        />
+                        <span>{p.product_short_name || p.product_id}</span>
+                      </label>
+                    )
+                  })}
+                <div className="product-picker-actions">
+                  <button type="button" onClick={() => { setSelectedProductIds(new Set()); setShowProductPicker(false); }}>
+                    Clear selection
+                  </button>
+                  <button type="button" onClick={() => setShowProductPicker(false)}>Done</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         {loadingAll ? (
           <div className="all-products-loading">Loading…</div>
         ) : (
-          <AllProductsTable
-            products={products.filter((p) =>
-              fuzzyMatch(p.product_short_name, allProductsSearchQuery) ||
-              fuzzyMatch(p.product_id, allProductsSearchQuery)
-            )}
+          <>
+            {(() => {
+              const searchFiltered = products.filter((p) =>
+                fuzzyMatch(p.product_short_name, allProductsSearchQuery) ||
+                fuzzyMatch(p.product_id, allProductsSearchQuery)
+              )
+              const filteredProducts = selectedProductIds.size === 0
+                ? searchFiltered
+                : searchFiltered.filter((p) => selectedProductIds.has(p.product_id))
+              return (
+                <>
+                  <p className="all-products-count" aria-live="polite">
+                    Showing {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
+                  </p>
+                  <AllProductsTable
+                    products={filteredProducts}
             historyAll={historyAll}
             predictionsAll={predictionsAll}
             dateStart={allProductsDateFrom}
             numDays={allProductsDateFrom <= allProductsDateTo ? daysBetween(allProductsDateFrom, allProductsDateTo) : 0}
           />
+                </>
+              )
+            })()}
+          </>
         )}
             </section>
           </>
@@ -597,6 +764,7 @@ export default function Dashboard() {
             >
               <option value="by_warehouse">By warehouse</option>
               <option value="by_product">By product (sum all warehouses)</option>
+              <option value="by_product_both_warehouses">By product (both warehouses)</option>
             </select>
           </label>
           <button
@@ -636,11 +804,16 @@ export default function Dashboard() {
             className="inventory-search-input"
           />
         </div>
+        <p className="inventory-count" aria-live="polite">
+          Showing {inventoryTableRows.length} {inventoryViewMode === 'by_product' ? 'product' : 'row'}{inventoryTableRows.length !== 1 ? 's' : ''}
+        </p>
         <InventoryStockTable
           rows={inventoryTableRows}
           snapshotAt={inventorySnapshotAt}
           loading={loadingInventory}
           aggregated={inventoryViewMode === 'by_product'}
+          viewMode={inventoryViewMode}
+          warehouseOrder={inventoryViewMode === 'by_product_both_warehouses' ? warehouseOrder : null}
             />
           </section>
         )}

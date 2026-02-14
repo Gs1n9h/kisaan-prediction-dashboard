@@ -41,10 +41,13 @@ export async function getProducts() {
   return list
 }
 
-/** Fetch actual demand for the product. Includes future delivery dates (up to today + daysForward) so chart can show actuals after today. */
-export async function getHistory(productId, daysBack = 30, daysForward = 30) {
-  const fromStr = localDateAtOffset(-daysBack)
-  const toStr = localDateAtOffset(daysForward)
+/** Fetch actual demand for the product. Includes future delivery dates (up to today + daysForward) so chart can show actuals after today.
+ * @param {string} [opts.fromStr] - Optional YYYY-MM-DD start (overrides daysBack)
+ * @param {string} [opts.toStr] - Optional YYYY-MM-DD end (overrides daysForward)
+ */
+export async function getHistory(productId, daysBack = 30, daysForward = 30, opts = {}) {
+  const fromStr = opts.fromStr ?? localDateAtOffset(-daysBack)
+  const toStr = opts.toStr ?? localDateAtOffset(daysForward)
   console.log('[getHistory] Fetching for product:', productId, 'range:', fromStr, 'to', toStr)
 
   const { data, error } = await analytics()
@@ -81,10 +84,12 @@ export async function getHistory(productId, daysBack = 30, daysForward = 30) {
  * we use the latest forecast (row with max prediction_date).
  * @param {number} daysBack - Include predictions from (today - daysBack) for overlap with history
  * @param {number} daysForward - Include predictions up to (today + daysForward), e.g. 7 or 30
+ * @param {string} [opts.fromStr] - Optional YYYY-MM-DD start (overrides daysBack)
+ * @param {string} [opts.toStr] - Optional YYYY-MM-DD end (overrides daysForward)
  */
-export async function getPredictions(productId, { daysBack = 30, daysForward = 30 } = {}) {
-  const fromStr = localDateAtOffset(-daysBack)
-  const toStr = localDateAtOffset(daysForward)
+export async function getPredictions(productId, { daysBack = 30, daysForward = 30, fromStr: optsFrom, toStr: optsTo } = {}) {
+  const fromStr = optsFrom ?? localDateAtOffset(-daysBack)
+  const toStr = optsTo ?? localDateAtOffset(daysForward)
   console.log('[getPredictions] Fetching for product:', productId, 'range:', fromStr, 'to', toStr)
 
   const { data: rows, error } = await analytics()
@@ -226,10 +231,12 @@ export async function getPredictionRunDates(productId) {
 
 /**
  * Get predictions for specific run dates (for overlay comparison). Uses same date range as chart.
+ * @param {string} [opts.fromStr] - Optional YYYY-MM-DD start
+ * @param {string} [opts.toStr] - Optional YYYY-MM-DD end
  */
-export async function getPredictionsForRuns(productId, selectedRunDates, { daysBack = 30, daysForward = 30 } = {}) {
-  const fromStr = localDateAtOffset(-daysBack)
-  const toStr = localDateAtOffset(daysForward)
+export async function getPredictionsForRuns(productId, selectedRunDates, { daysBack = 30, daysForward = 30, fromStr: optsFrom, toStr: optsTo } = {}) {
+  const fromStr = optsFrom ?? localDateAtOffset(-daysBack)
+  const toStr = optsTo ?? localDateAtOffset(daysForward)
   console.log('[getPredictionsForRuns] Fetching for product:', productId, 'runs:', selectedRunDates)
 
   const { data: rows, error } = await analytics()

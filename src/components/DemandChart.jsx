@@ -20,14 +20,17 @@ function toDateKey(d) {
   return String(d).slice(0, 10)
 }
 
-// Format date for tooltip: "YYYY-MM-DD (DayName)"
+// Format date for tooltip: "dd/mm/yy (DayName)"
 function formatDateWithDayOfWeek(dateStr) {
   if (!dateStr || dateStr.length < 10) return dateStr
   const d = new Date(dateStr + 'T12:00:00') // noon to avoid TZ edge cases
   if (Number.isNaN(d.getTime())) return dateStr
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const yy = String(d.getFullYear()).slice(-2)
   const day = dayNames[d.getDay()]
-  return `${dateStr} (${day})`
+  return `${dd}/${mm}/${yy} (${day})`
 }
 
 // Calendar today + 1 (next day) as YYYY-MM-DD — used for highlight only; not derived from delivery_date
