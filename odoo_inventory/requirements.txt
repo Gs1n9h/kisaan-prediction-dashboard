@@ -1,0 +1,4 @@
+# Odoo inventory scripts — local testing and later n8n
+python-dotenv>=1.0.0
+# For sync_stock_to_db.py (Odoo → Supabase)
+supabase>=2.0.0

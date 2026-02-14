@@ -1,0 +1,20 @@
+[Unit]
+Description=Odoo inventory sync API (for n8n)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Replace ODEO_INVENTORY_DIR with the full path to the odoo_inventory folder (see install script)
+WorkingDirectory=ODOO_INVENTORY_DIR
+ExecStart=ODOO_INVENTORY_DIR/.venv/bin/python sync_api.py
+Restart=always
+RestartSec=5
+# Load env (Odoo + optional SYNC_API_PORT, SYNC_API_KEY)
+EnvironmentFile=ODOO_INVENTORY_DIR/.env
+# Optional: uncomment and set if .env is not used
+# Environment=SYNC_API_PORT=8765
+# Environment=SYNC_API_KEY=your-secret
+
+[Install]
+WantedBy=multi-user.target
