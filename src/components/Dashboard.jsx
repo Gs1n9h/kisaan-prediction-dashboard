@@ -42,6 +42,20 @@ function parseCategoryPath(categoryName) {
   return categoryName.split(/\s*\/\s*/).filter(Boolean)
 }
 
+/** Fuzzy-normalize for search: lowercase, trim, remove accents. Case-insensitive matching. */
+function fuzzyNorm(s) {
+  if (s == null) return ''
+  const str = String(s).trim().toLowerCase()
+  return str.normalize('NFD').replace(/\p{Diacritic}/gu, '')
+}
+
+function fuzzyMatch(text, query) {
+  if (!query || !query.trim()) return true
+  const q = fuzzyNorm(query)
+  const t = fuzzyNorm(text)
+  return t.includes(q)
+}
+
 export default function Dashboard() {
   const [products, setProducts] = useState([])
   const [productId, setProductId] = useState('')
@@ -80,7 +94,7 @@ export default function Dashboard() {
   const [selectedCategorySub, setSelectedCategorySub] = useState('') // '' = All under root; e.g. 'Card Boxes'
   const [inventoryViewMode, setInventoryViewMode] = useState('by_warehouse') // 'by_warehouse' | 'by_product'
   const [inventorySearchQuery, setInventorySearchQuery] = useState('')
-  const [productSearchQuery, setProductSearchQuery] = useState('')
+  const [allProductsSearchQuery, setAllProductsSearchQuery] = useState('')
   const syncInventoryWebhookUrl = import.meta.env.VITE_N8N_SYNC_INVENTORY_WEBHOOK || ''
 
   useEffect(() => {
@@ -200,11 +214,9 @@ export default function Dashboard() {
       if (selectedCategorySub && (path.length < 2 || path[1] !== selectedCategorySub)) return false
     }
     if (inventorySearchQuery.trim()) {
-      const q = inventorySearchQuery.trim().toLowerCase()
-      const productName = (r.product_name || '').toLowerCase()
-      const defaultCode = (r.default_code || '').toLowerCase()
-      const categoryName = (r.category_name || '').toLowerCase()
-      if (!productName.includes(q) && !defaultCode.includes(q) && !categoryName.includes(q)) return false
+      if (!fuzzyMatch(r.product_name, inventorySearchQuery) &&
+          !fuzzyMatch(r.default_code, inventorySearchQuery) &&
+          !fuzzyMatch(r.category_name, inventorySearchQuery)) return false
     }
     return true
   })
@@ -355,46 +367,25 @@ export default function Dashboard() {
           <>
             <header className="dashboard-header demand-header">
               <h1>Demand predictions</h1>
-              <div className="demand-product-filters">
-                <label className="product-search-label">
-                  <span className="filter-name">Search product</span>
-                  <input
-                    type="search"
-                    value={productSearchQuery}
-                    onChange={(e) => setProductSearchQuery(e.target.value)}
-                    placeholder="Search by name or ID…"
-                    aria-label="Search products"
-                    className="product-search-input"
-                  />
-                </label>
-                <label className="product-select-label">
-                  Product
-                  <select
-                    value={productId}
-                    onChange={(e) => {
-                      const next = e.target.value
-                      setProductId(next)
-                      if (next) setLoading(true)
-                    }}
-                    disabled={loading && products.length === 0}
-                  >
-                    <option value="">Select product</option>
-                    {products
-                      .filter((p) => {
-                        if (!productSearchQuery.trim()) return true
-                        const q = productSearchQuery.trim().toLowerCase()
-                        const name = (p.product_short_name || p.product_id || '').toString().toLowerCase()
-                        const id = (p.product_id || '').toString().toLowerCase()
-                        return name.includes(q) || id.includes(q)
-                      })
-                      .map((p) => (
-                        <option key={p.product_id} value={p.product_id}>
-                          {p.product_short_name || p.product_id} ({p.product_id})
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              </div>
+              <label className="product-select-label">
+                Product
+                <select
+                  value={productId}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    setProductId(next)
+                    if (next) setLoading(true)
+                  }}
+                  disabled={loading && products.length === 0}
+                >
+                  <option value="">Select product</option>
+                  {products.map((p) => (
+                    <option key={p.product_id} value={p.product_id}>
+                      {p.product_short_name || p.product_id} ({p.product_id})
+                    </option>
+                  ))}
+                </select>
+              </label>
             </header>
 
             {productId && (
@@ -515,11 +506,24 @@ export default function Dashboard() {
             Reset to 7 days
           </button>
         </div>
+        <div className="all-products-search-wrap">
+          <input
+            type="search"
+            value={allProductsSearchQuery}
+            onChange={(e) => setAllProductsSearchQuery(e.target.value)}
+            placeholder="Search product (fuzzy, type to filter)…"
+            aria-label="Search products in table"
+            className="all-products-search-input"
+          />
+        </div>
         {loadingAll ? (
           <div className="all-products-loading">Loading…</div>
         ) : (
           <AllProductsTable
-            products={products}
+            products={products.filter((p) =>
+              fuzzyMatch(p.product_short_name, allProductsSearchQuery) ||
+              fuzzyMatch(p.product_id, allProductsSearchQuery)
+            )}
             historyAll={historyAll}
             predictionsAll={predictionsAll}
             dateStart={allProductsDateFrom}
@@ -534,17 +538,6 @@ export default function Dashboard() {
           <section className="inventory-section">
             <h2>Inventory (Odoo stock)</h2>
         <div className="inventory-actions">
-          <label className="filter-label inventory-search-filter">
-            <span className="filter-name">Search</span>
-            <input
-              type="search"
-              value={inventorySearchQuery}
-              onChange={(e) => setInventorySearchQuery(e.target.value)}
-              placeholder="Search product, code, or category…"
-              aria-label="Search inventory"
-              className="inventory-search-input"
-            />
-          </label>
           <label className="filter-label inventory-warehouse-filter">
             <span className="filter-name">Warehouse</span>
             <select
@@ -633,6 +626,16 @@ export default function Dashboard() {
             aggregated={inventoryViewMode === 'by_product'}
           />
         )}
+        <div className="inventory-search-wrap">
+          <input
+            type="search"
+            value={inventorySearchQuery}
+            onChange={(e) => setInventorySearchQuery(e.target.value)}
+            placeholder="Search product, code, or category (fuzzy, type to filter)…"
+            aria-label="Search inventory table"
+            className="inventory-search-input"
+          />
+        </div>
         <InventoryStockTable
           rows={inventoryTableRows}
           snapshotAt={inventorySnapshotAt}
